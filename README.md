@@ -6,15 +6,16 @@
 
 ```
 The voice assistant project will be structured using a modular Python architecture with the following key components:
-1) main.py serves as the entry point, initializing the core application and coordinating between modules.
-2) speech_listener.py implements continuous audio monitoring using PyAudio, handling wake word detection through a trained model (likely using libraries like Porcupine or Snowboy).
-3) command_processor.py contains the logic for parsing and executing voice commands, implementing command patterns for different actions (lights, music, etc.).
-4) sensitivity_manager.py handles the adjustable sensitivity settings, storing configurations in a SQLite database using SQLAlchemy ORM.
-5) notification_handler.py manages visual and audio feedback using system-specific APIs.
-The application uses a SQLite database (config.db) to store user preferences, sensitivity settings, and command history, accessed through SQLAlchemy models defined in models.py.
-The data flow begins with speech_listener.py continuously monitoring audio input, which, upon wake word detection, triggers the command_processor.py.
-The command processor then executes the appropriate action while notification_handler.py provides feedback. All components interact through a well-defined event system, with the sensitivity_manager.py module continuously adjusting detection thresholds based on stored preferences.
-The database connection is managed through a connection pool to ensure efficient resource usage, with database operations wrapped in transactions to maintain data integrity.
+1) main.py serves as the entry point, initializing the core components and managing the application lifecycle.
+2) speech_listener.py implements continuous audio monitoring using PyAudio, handling wake word detection through a dedicated thread.
+3) command_processor.py contains the logic for processing recognized commands, implementing command patterns for different actions (lights, music, etc.), and manages the sensitivity settings.
+4) wake_word_detector.py uses a pre-trained speech recognition model (likely using TensorFlow or PyTorch) to detect wake words with adjustable sensitivity thresholds.
+5) notification_manager.py handles visual and audio feedback when commands are being processed.
+The application uses SQLite as a lightweight database (managed through SQLAlchemy ORM) in database_manager.py to store user preferences, sensitivity settings, and command history.
+The database connection is configured in config.py, which also stores other application settings.
+Data flows from the audio input through the wake word detector, then to the command processor, which queries the database for user preferences before executing actions.
+The notification system runs parallel to these operations, providing real-time feedback.
+The architecture follows a service-oriented pattern, with clear separation of concerns between audio processing, command handling, and user feedback components.
 ```
 
 ## Folder Structure
@@ -23,13 +24,17 @@ The database connection is managed through a connection pool to ensure efficient
 voice_assistant/
   - main.py
   - config/
-    - database.py
+    - config.py
   - modules/
     - speech_listener.py
     - command_processor.py
-    - sensitivity_manager.py
-    - notification_handler.py
-    - models.py
-  - data/
-    - config.db
+    - wake_word_detector.py
+    - notification_manager.py
+    - database_manager.py
+  - models/
+    - user_preferences.py
+    - command_history.py
+  - utils/
+    - audio_utils.py
+    - db_utils.py
 ```
