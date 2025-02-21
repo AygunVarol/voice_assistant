@@ -1,85 +1,86 @@
 import logging
-from pathlib import Path
-import sys
-
-from config.database import init_db
+import threading
+from config.config import Config
 from modules.speech_listener import SpeechListener
 from modules.command_processor import CommandProcessor
-from modules.sensitivity_manager import SensitivityManager 
-from modules.notification_handler import NotificationHandler
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('voice_assistant.log'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+from modules.wake_word_detector import WakeWordDetector
+from modules.notification_manager import NotificationManager
+from modules.database_manager import DatabaseManager
+from utils.db_utils import init_db
 
 class VoiceAssistant:
     def __init__(self):
+        # Initialize logging
+        logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
         
+        # Load configuration
+        self.config = Config()
+        
         # Initialize database
+        self.db = DatabaseManager()
         init_db()
         
-        # Initialize components
-        self.sensitivity_manager = SensitivityManager()
-        self.notification_handler = NotificationHandler()
-        self.command_processor = CommandProcessor(self.notification_handler)
-        self.speech_listener = SpeechListener(
-            sensitivity_manager=self.sensitivity_manager,
-            command_processor=self.command_processor,
-            notification_handler=self.notification_handler
+        # Initialize core components
+        self.notification_manager = NotificationManager()
+        self.wake_word_detector = WakeWordDetector(
+            sensitivity=self.config.wake_word_sensitivity
         )
+        self.command_processor = CommandProcessor(
+            notification_manager=self.notification_manager,
+            db_manager=self.db
+        )
+        self.speech_listener = SpeechListener(
+            wake_word_detector=self.wake_word_detector,
+            command_processor=self.command_processor
+        )
+        
+        # Initialize thread control
+        self.is_running = False
+        self.listener_thread = None
 
     def start(self):
         """Start the voice assistant"""
-        try:
-            self.logger.info("Starting voice assistant...")
-            self.notification_handler.notify_startup()
-            self.speech_listener.start_listening()
-            
-        except Exception as e:
-            self.logger.error(f"Error starting voice assistant: {str(e)}")
-            self.notification_handler.notify_error("Failed to start voice assistant")
-            sys.exit(1)
+        self.logger.info("Starting voice assistant...")
+        self.is_running = True
+        
+        # Start speech listener in separate thread
+        self.listener_thread = threading.Thread(
+            target=self.speech_listener.start_listening
+        )
+        self.listener_thread.daemon = True
+        self.listener_thread.start()
+        
+        self.notification_manager.notify_startup()
+        self.logger.info("Voice assistant started successfully")
 
     def stop(self):
         """Stop the voice assistant"""
-        try:
-            self.logger.info("Stopping voice assistant...")
+        self.logger.info("Stopping voice assistant...")
+        self.is_running = False
+        
+        if self.listener_thread:
             self.speech_listener.stop_listening()
-            self.notification_handler.notify_shutdown()
+            self.listener_thread.join()
             
-        except Exception as e:
-            self.logger.error(f"Error stopping voice assistant: {str(e)}")
-            self.notification_handler.notify_error("Error during shutdown")
+        self.notification_manager.notify_shutdown()
+        self.db.close()
+        self.logger.info("Voice assistant stopped successfully")
 
 def main():
-    # Create data directory if it doesn't exist
-    data_dir = Path("data")
-    data_dir.mkdir(exist_ok=True)
-    
-    # Initialize and start voice assistant
     assistant = VoiceAssistant()
-    
     try:
         assistant.start()
         
         # Keep main thread alive
-        while True:
+        while assistant.is_running:
             try:
-                input()  # Wait for enter key
+                command = input()
+                if command.lower() == "quit":
+                    break
             except KeyboardInterrupt:
                 break
-            
-    except Exception as e:
-        logger.error(f"Unhandled exception: {str(e)}")
-        
+                
     finally:
         assistant.stop()
 
